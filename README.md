@@ -16,7 +16,7 @@ Dashboard satelital para palma africana con datos en tiempo real desde Google Ea
 
 ## URL API
 
-https://script.google.com/macros/s/AKfycbxb1UHEAwSsQSlC8S-QVuQdCTgrJ8SZizhiL4K8W4L2qo0FhRFUpar917HzNeeh7Jil7A/exec
+https://script.google.com/macros/s/AKfycbzxUWO3rJWHc68iP8RNgSG-_fTBzkvG4DA95kVRUAeZ1bcKXmtVVYCBJaWI-tCsEcpz/exec
 
 ## Desarrollo Local
 
