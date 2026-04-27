@@ -1,13 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ============================================================
-// CONFIG — reemplaza con tu URL después de deployar el Apps Script
-// ============================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzxUWO3rJWHc68iP8RNgSG-_fTBzkvG4DA95kVRUAeZ1bcKXmtVVYCBJaWI-tCsEcpz/exec";
 
-// ============================================================
-// FALLBACK (datos hardcodeados si la API falla)
-// ============================================================
 const FINCA_FALLBACK = {
   nombre: "El Porvenir", propietario: "Jose Orlando Roa Sanchez",
   municipio: "Cantagallo, Bolívar", area: "18.5 ha",
@@ -15,23 +9,20 @@ const FINCA_FALLBACK = {
   nubosidad: "14.2%", lluvia: 243, anomalias: 36,
   lotes: [
     { id:"L1", material:"Híbrido Taisha",       siembra:"03/03/2011", edad:15,
-      ndvi:0.8510, ndviPrev:0.8342, ndwi:0.042,  savi:null,  evi:0.631,
+      ndvi:0.8510, ndviPrev:0.8342, ndwi:0.042,  savi:null,  evi:0.631, ndre:0.648,
       tendencia:[0.776,0.852,0.838,0.858,0.855,0.851], anomalias:8 },
     { id:"L2", material:"Guineensis + Híbrido", siembra:"25/11/2022", edad:3,
-      ndvi:0.8338, ndviPrev:0.8127, ndwi:0.018,  savi:0.412, evi:0.589,
+      ndvi:0.8338, ndviPrev:0.8127, ndwi:0.018,  savi:0.412, evi:0.589, ndre:0.641,
       tendencia:[0.734,0.789,0.769,0.830,0.830,0.844], anomalias:4 },
     { id:"L3", material:"OxG Corpoica",         siembra:"25/11/2016", edad:9,
-      ndvi:0.8294, ndviPrev:0.7175, ndwi:-0.031, savi:null,  evi:0.598,
+      ndvi:0.8294, ndviPrev:0.7175, ndwi:-0.031, savi:null,  evi:0.598, ndre:0.635,
       tendencia:[0.717,0.799,0.808,0.851,0.830,0.848], anomalias:18 },
     { id:"L4", material:"OxG Corpoica10",       siembra:"25/11/2016", edad:9,
-      ndvi:0.8495, ndviPrev:0.8249, ndwi:0.011,  savi:null,  evi:0.624,
+      ndvi:0.8495, ndviPrev:0.8249, ndwi:0.011,  savi:null,  evi:0.624, ndre:0.638,
       tendencia:[0.825,0.835,0.779,0.835,0.824,0.846], anomalias:6 },
   ],
 };
 
-// ============================================================
-// CLASIFICADORES
-// ============================================================
 function getNDVIStatus(ndvi, edad) {
   if (edad <= 3) {
     if (ndvi >= 0.78) return { label:"Óptimo/edad", color:"#52b788", bg:"#52b78818", nivel:1 };
@@ -66,6 +57,14 @@ function getSAVIStatus(savi, edad) {
   return { label:"Revisar", color:"#e24b4a", desc:"Posible estrés o falla en establecimiento" };
 }
 
+function getNDREStatus(ndre) {
+  if (ndre === null || ndre === undefined) return null;
+  if (ndre >= 0.45) return { label:"N óptimo",    color:"#52b788", desc:"Clorofila alta — sin deficiencia nitrógeno" };
+  if (ndre >= 0.35) return { label:"N adecuado",  color:"#81c995", desc:"Nitrógeno en rango normal" };
+  if (ndre >= 0.25) return { label:"N bajo",      color:"#f4a261", desc:"Considerar fertilización nitrogenada" };
+  return              { label:"N deficiente", color:"#e24b4a", desc:"Deficiencia severa — muestreo foliar urgente" };
+}
+
 function getPCRisk(ndvi, ndviPrev, anomalias, lluvia) {
   let score = 0, factores = [];
   if (ndvi < (ndviPrev || ndvi) - 0.05) { score += 3; factores.push("Caída NDVI > 0.05 vs período anterior"); }
@@ -88,9 +87,6 @@ function getARRisk(ndvi, edad, lluvia) {
   return { nivel:"Alto", color:"#e24b4a", score, factores };
 }
 
-// ============================================================
-// SVG COMPONENTS
-// ============================================================
 function SparkLine({ data, color, width=90, height=32 }) {
   if (!data || data.length < 2) return null;
   const min = Math.min(...data) - 0.005;
@@ -152,9 +148,6 @@ function CircleGauge({ value, min=-0.5, max=0.5, color, size=56 }) {
   );
 }
 
-// ============================================================
-// UI COMPONENTS
-// ============================================================
 function RiskPanel({ title, risk }) {
   return (
     <div style={{background:"#0a120d",borderRadius:10,padding:"14px 16px",border:`1px solid ${risk.color}30`,borderLeft:`3px solid ${risk.color}`}}>
@@ -198,20 +191,16 @@ function DataBadge({ source, time, isLive }) {
   );
 }
 
-// ============================================================
-// APP PRINCIPAL
-// ============================================================
 const PERIODOS = ["2023-S1","2023-S2","2024-S1","2024-S2","2025-S1","2025-S2"];
 
 export default function App() {
   const [finca,      setFinca]      = useState(null);
   const [loading,    setLoading]    = useState(true);
-  const [dataSource, setDataSource] = useState("loading"); // "api" | "fallback"
+  const [dataSource, setDataSource] = useState("loading");
   const [lastUpdate, setLastUpdate] = useState(null);
   const [activeLote, setActiveLote] = useState(null);
   const [activeTab,  setActiveTab]  = useState("indices");
 
-  // ---- Fetch ----
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -236,7 +225,6 @@ export default function App() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ---- Guarda lote activo sincronizado cuando finca cambia ----
   useEffect(() => {
     if (finca && activeLote) {
       const updated = finca.lotes.find(l => l.id === activeLote.id);
@@ -246,11 +234,12 @@ export default function App() {
 
   if (loading) return <LoadingScreen/>;
 
-  const pcRisk  = getPCRisk(activeLote.ndvi, activeLote.ndviPrev, activeLote.anomalias, finca.lluvia);
-  const arRisk  = getARRisk(activeLote.ndvi, activeLote.edad, finca.lluvia);
-  const ndviSt  = getNDVIStatus(activeLote.ndvi, activeLote.edad);
-  const ndwiSt  = getNDWIStatus(activeLote.ndwi);
-  const saviSt  = activeLote.savi ? getSAVIStatus(activeLote.savi, activeLote.edad) : null;
+  const pcRisk   = getPCRisk(activeLote.ndvi, activeLote.ndviPrev, activeLote.anomalias, finca.lluvia);
+  const arRisk   = getARRisk(activeLote.ndvi, activeLote.edad, finca.lluvia);
+  const ndviSt   = getNDVIStatus(activeLote.ndvi, activeLote.edad);
+  const ndwiSt   = getNDWIStatus(activeLote.ndwi);
+  const saviSt   = activeLote.savi ? getSAVIStatus(activeLote.savi, activeLote.edad) : null;
+  const ndreSt   = activeLote.ndre != null ? getNDREStatus(activeLote.ndre) : null;
   const ndviDelta = activeLote.ndviPrev ? ((activeLote.ndvi - activeLote.ndviPrev) * 100).toFixed(1) : null;
 
   return (
@@ -282,10 +271,10 @@ export default function App() {
             </div>
             <div>
               <div style={{fontSize:13,fontWeight:700,fontFamily:"'Syne',sans-serif",color:"#e8f4f0"}}>
-                PalmaSat <span style={{color:"#52b788",fontSize:10}}>v3.0</span>
+                PalmaSat <span style={{color:"#52b788",fontSize:10}}>v3.6</span>
               </div>
               <div style={{fontSize:9,color:"#52b788",letterSpacing:".12em",textTransform:"uppercase"}}>
-                NDVI · NDWI · SAVI · Protocolos PC
+                NDVI · NDWI · EVI · SAVI · NDRE
               </div>
             </div>
           </div>
@@ -299,7 +288,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Banner fallback */}
         {dataSource === "fallback" && (
           <div style={{background:"#1a0a00",borderBottom:"1px solid #f4a26130",padding:"6px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:10,color:"#f4a261"}}>
@@ -310,7 +298,6 @@ export default function App() {
           </div>
         )}
 
-        {/* FINCA HEADER */}
         <div style={{padding:"16px 20px 0",borderBottom:"1px solid #ffffff06"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10}}>
             <div>
@@ -331,8 +318,6 @@ export default function App() {
               ))}
             </div>
           </div>
-
-          {/* Selector de lotes */}
           <div style={{display:"flex",gap:6,paddingBottom:0}}>
             {finca.lotes.map(l => {
               const st = getNDVIStatus(l.ndvi, l.edad);
@@ -348,10 +333,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* LOTE DETALLE */}
         <div style={{padding:"20px",animation:"fadeUp .3s ease"}} key={activeLote.id}>
 
-          {/* Info lote */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
             <div style={{background:"#111a16",border:"1px solid #ffffff08",borderRadius:10,padding:"14px 16px"}}>
               <div style={{fontSize:9,color:"#52b788",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}}>Identificación</div>
@@ -383,17 +366,15 @@ export default function App() {
             </div>
           </div>
 
-          {/* Nav tabs */}
           <div style={{display:"flex",gap:0,borderBottom:"1px solid #ffffff08",marginBottom:18}}>
             {[["indices","Índices"],["protocolos","Protocolos PC/AR"],["campo","Campo GPS"]].map(([k,v])=>(
               <button key={k} className={`nav-tab ${activeTab===k?"active":""}`} onClick={()=>setActiveTab(k)}>{v}</button>
             ))}
           </div>
 
-          {/* TAB: ÍNDICES */}
           {activeTab==="indices" && (
             <div style={{animation:"fadeUp .2s ease"}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:18}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:18}}>
 
                 {/* NDWI */}
                 <div style={{background:"#111a16",border:"1px solid #ffffff08",borderRadius:10,padding:"16px"}}>
@@ -425,13 +406,37 @@ export default function App() {
                   ) : (
                     <>
                       <div style={{fontSize:9,color:"#52b788",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>EVI · Índice mejorado</div>
-                      <div style={{fontSize:22,fontWeight:700,color:"#52b788",fontFamily:"monospace",marginBottom:6}}>{activeLote.evi.toFixed(4)}</div>
-                      <HealthBar value={activeLote.evi} min={0.2} max={0.9} width={160} height={8}/>
+                      <div style={{fontSize:22,fontWeight:700,color:"#52b788",fontFamily:"monospace",marginBottom:6}}>
+                        {activeLote.evi != null ? activeLote.evi.toFixed(4) : "N/A"}
+                      </div>
+                      {activeLote.evi != null && <HealthBar value={activeLote.evi} min={0.2} max={0.9} width={160} height={8}/>}
                       <div style={{fontSize:10,color:"#556b5e",marginTop:8,lineHeight:1.5}}>
-                        {activeLote.evi>=0.55?"Biomasa alta — complementa NDVI en zona densa":"Biomasa moderada — revisar con NDVI"}
+                        {(activeLote.evi||0)>=0.55?"Biomasa alta — complementa NDVI en zona densa":"Biomasa moderada — revisar con NDVI"}
                       </div>
                     </>
                   )}
+                </div>
+
+                {/* NDRE */}
+                <div style={{background:"#111a16",border:"1px solid #ffffff08",borderRadius:10,padding:"16px"}}>
+                  <div style={{fontSize:9,color:"#9b59b6",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>NDRE · Nitrógeno</div>
+                  {ndreSt ? (
+                    <>
+                      <div style={{fontSize:22,fontWeight:700,color:ndreSt.color,fontFamily:"monospace",marginBottom:6}}>
+                        {activeLote.ndre.toFixed(4)}
+                      </div>
+                      <HealthBar value={activeLote.ndre} min={0.1} max={0.7} width={160} height={8}/>
+                      <div style={{marginTop:8}}>
+                        <span style={{background:`${ndreSt.color}20`,color:ndreSt.color,padding:"2px 8px",borderRadius:8,fontSize:10}}>{ndreSt.label}</span>
+                        <div style={{fontSize:10,color:"#556b5e",marginTop:6,lineHeight:1.5}}>{ndreSt.desc}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{fontSize:12,color:"#556b5e",marginTop:8}}>N/A</div>
+                  )}
+                  <div style={{fontSize:9,color:"#556b5e",borderTop:"1px solid #ffffff06",paddingTop:8,marginTop:8}}>
+                    NIR (B8) − RedEdge (B5) · Umbral alerta: &lt; 0.35
+                  </div>
                 </div>
 
                 {/* Panel de índices */}
@@ -441,7 +446,8 @@ export default function App() {
                     {[
                       { label:"NDVI", val:activeLote.ndvi,  ref:"0.65–1.00", ok:activeLote.ndvi>=0.80 },
                       { label:"NDWI", val:activeLote.ndwi,  ref:"−0.05 a +1",ok:activeLote.ndwi>=-0.05 },
-                      { label:"EVI",  val:activeLote.evi,   ref:"0.20–0.90", ok:activeLote.evi>=0.45 },
+                      { label:"EVI",  val:activeLote.evi,   ref:"0.20–0.90", ok:(activeLote.evi||0)>=0.45 },
+                      { label:"NDRE", val:activeLote.ndre,  ref:"0.25–0.65", ok:(activeLote.ndre||0)>=0.35 },
                       ...(activeLote.savi?[{ label:"SAVI", val:activeLote.savi, ref:"0.18–0.70", ok:activeLote.savi>=0.30 }]:[]),
                     ].map((idx,i)=>(
                       <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #ffffff06"}}>
@@ -450,7 +456,9 @@ export default function App() {
                           <span style={{fontSize:9,color:"#556b5e",marginLeft:8}}>{idx.ref}</span>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontSize:12,fontFamily:"monospace",color:idx.ok?"#52b788":"#f4a261",fontWeight:600}}>{idx.val.toFixed(4)}</span>
+                          <span style={{fontSize:12,fontFamily:"monospace",color:idx.ok?"#52b788":"#f4a261",fontWeight:600}}>
+                            {idx.val != null ? idx.val.toFixed(4) : "N/A"}
+                          </span>
                           <span style={{fontSize:10,color:idx.ok?"#1a5c38":"#f4a261"}}>{idx.ok?"✓":"⚠"}</span>
                         </div>
                       </div>
@@ -459,7 +467,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Interpretación integrada */}
               <div style={{background:"#111a16",border:"1px solid #1a5c3830",borderRadius:10,padding:"14px 18px"}}>
                 <div style={{fontSize:9,color:"#52b788",textTransform:"uppercase",letterSpacing:".1em",marginBottom:10}}>
                   Interpretación integrada · {activeLote.id} · {activeLote.material}
@@ -468,14 +475,13 @@ export default function App() {
                   {activeLote.edad<=3 ? (
                     <>NDVI de {activeLote.ndvi.toFixed(4)} es normal para palma de {activeLote.edad} años con dosel en desarrollo. El SAVI ({activeLote.savi?.toFixed(4)}) confirma interferencia moderada del suelo. NDWI de {activeLote.ndwi.toFixed(4)}: {ndwiSt.label.toLowerCase()}.</>
                   ) : (
-                    <>NDVI de {activeLote.ndvi.toFixed(4)} ({ndviSt.label}) en palma de {activeLote.edad} años (producción {activeLote.edad<=7?"en inicio":"plena"}). NDWI de {activeLote.ndwi.toFixed(4)} indica {ndwiSt.label.toLowerCase()} — {ndwiSt.desc.toLowerCase()}. EVI de {activeLote.evi.toFixed(4)} confirma la lectura NDVI en zona de alta biomasa.</>
+                    <>NDVI de {activeLote.ndvi.toFixed(4)} ({ndviSt.label}) en palma de {activeLote.edad} años (producción {activeLote.edad<=7?"en inicio":"plena"}). NDWI de {activeLote.ndwi.toFixed(4)} indica {ndwiSt.label.toLowerCase()} — {ndwiSt.desc.toLowerCase()}. EVI de {activeLote.evi?.toFixed(4)} confirma biomasa alta.{ndreSt ? ` NDRE de ${activeLote.ndre.toFixed(4)}: ${ndreSt.label.toLowerCase()} — ${ndreSt.desc.toLowerCase()}.` : ""}</>
                   )}
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB: PROTOCOLOS */}
           {activeTab==="protocolos" && (
             <div style={{animation:"fadeUp .2s ease"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
@@ -489,7 +495,7 @@ export default function App() {
                     { title:"Pudrición del Cogollo (PC)",     color:"#e24b4a", sintomas:["Decoloración amarillo-parda en hojas del cogollo","Podredumbre húmeda en base de flechas","Olor fétido característico","Patrón satelital: mancha radial oscura","NDVI caída local > 0.08 en < 60 días"] },
                     { title:"Anillo Rojo (R. palmarum)",       color:"#f4a261", sintomas:["Amarillamiento progresivo de hojas externas","Perforación circular en estipe","Tejido interno con anillo rojizo al corte","NDVI caída gradual sobre 3-4 períodos","Presencia de escarabajos adultos o larvas"] },
                     { title:"Estrés Hídrico (NDWI < -0.10)",  color:"#378add", sintomas:["Cierre de folíolos (posición vertical)","Reducción de emisión de hojas nuevas","Coloración verde-grisácea en follaje","NDWI < -0.15 = revisar riego urgente","Recuperación rápida con lluvia o riego"] },
-                    { title:"Deficiencia Nutricional",         color:"#9b59b6", sintomas:["Clorosis intervenal (Mg, Fe, Mn)","Manchas necróticas en folíolos (K, Ca)","Reducción general del NDVI sin patrón focal","EVI bajo con NDVI moderado","Confirmar con muestreo foliar laboratorio"] },
+                    { title:"Deficiencia Nutricional",         color:"#9b59b6", sintomas:["Clorosis intervenal (Mg, Fe, Mn)","Manchas necróticas en folíolos (K, Ca)","Reducción general del NDVI sin patrón focal","NDRE bajo con NDVI moderado — déficit N","Confirmar con muestreo foliar laboratorio"] },
                   ].map((e,i)=>(
                     <div key={i} style={{background:"#0a120d",borderRadius:8,padding:"12px",borderLeft:`2px solid ${e.color}`}}>
                       <div style={{fontSize:11,fontWeight:600,color:e.color,marginBottom:8}}>{e.title}</div>
@@ -523,7 +529,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB: CAMPO */}
           {activeTab==="campo" && (
             <div style={{animation:"fadeUp .2s ease"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
@@ -552,20 +557,20 @@ export default function App() {
                 <div style={{background:"#111a16",border:"1px solid #ffffff08",borderRadius:10,padding:"16px"}}>
                   <div style={{fontSize:9,color:"#52b788",textTransform:"uppercase",letterSpacing:".1em",marginBottom:12}}>WhatsApp · Alerta campo</div>
                   <button onClick={()=>{
-                    const msg = `🛰️ *PalmaSat v3.0 · ${finca.nombre}*\n${finca.municipio}\n\n📊 *Índices ${activeLote.id} (${activeLote.material}):*\n• NDVI: ${activeLote.ndvi.toFixed(4)} — ${ndviSt.label}\n• NDWI: ${activeLote.ndwi.toFixed(4)} — ${ndwiSt.label}\n• EVI: ${activeLote.evi.toFixed(4)}\n${activeLote.savi?`• SAVI: ${activeLote.savi.toFixed(4)} — ${saviSt?.label}\n`:""}\n⚠️ *Riesgo PC:* ${pcRisk.nivel}\n⚠️ *Riesgo Anillo Rojo:* ${arRisk.nivel}\n\n📍 Ver en campo: maps.google.com/?q=${finca.lat},${finca.lng}\n\n_Sentinel-2 · ${finca.fechaImagen} · Nubosidad: ${finca.nubosidad}_\n_${dataSource==="api"?"Datos en tiempo real":"Datos locales"}_`;
+                    const msg = `🛰️ *PalmaSat v3.6 · ${finca.nombre}*\n${finca.municipio}\n\n📊 *Índices ${activeLote.id} (${activeLote.material}):*\n• NDVI: ${activeLote.ndvi.toFixed(4)} — ${ndviSt.label}\n• NDWI: ${activeLote.ndwi.toFixed(4)} — ${ndwiSt.label}\n• EVI: ${activeLote.evi?.toFixed(4)}\n• NDRE: ${activeLote.ndre?.toFixed(4)}${ndreSt?" — "+ndreSt.label:""}\n${activeLote.savi?`• SAVI: ${activeLote.savi.toFixed(4)} — ${saviSt?.label}\n`:""}\n⚠️ *Riesgo PC:* ${pcRisk.nivel}\n⚠️ *Riesgo Anillo Rojo:* ${arRisk.nivel}\n\n📍 Ver en campo: maps.google.com/?q=${finca.lat},${finca.lng}\n\n_Sentinel-2 · ${finca.fechaImagen} · Nubosidad: ${finca.nubosidad}_\n_${dataSource==="api"?"Datos en tiempo real":"Datos locales"}_`;
                     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
                   }} style={{width:"100%",background:"#25D36615",border:"1px solid #25D366",color:"#25D366",borderRadius:8,padding:"11px",fontSize:12,fontFamily:"'DM Mono',monospace",cursor:"pointer",marginBottom:10}}>
                     📱 Enviar reporte a WhatsApp
                   </button>
                   <div style={{fontSize:9,color:"#556b5e",lineHeight:1.6}}>
-                    Incluye: NDVI · NDWI · SAVI · Riesgo PC · Riesgo Anillo Rojo · Coordenadas GPS · Fecha imagen
+                    Incluye: NDVI · NDWI · EVI · NDRE · SAVI · Riesgo PC · Anillo Rojo · GPS · Fecha imagen
                   </div>
                 </div>
               </div>
               <div style={{background:"#0a120d",border:"1px dashed #1a5c38",borderRadius:10,padding:"14px 18px"}}>
-                <div style={{fontSize:9,color:"#52b788",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}}>Backend GEE v3.0 · Configuración activa</div>
+                <div style={{fontSize:9,color:"#52b788",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}}>Backend GEE v3.6 · Configuración activa</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,fontSize:10,color:"#8a9e94"}}>
-                  {["Imagen más reciente con < 20% nubosidad","Fallback automático a 45% si no hay imagen","Máscara nubes píxel a píxel (banda SCL)","NDVI + NDWI + SAVI (L=0.5) + EVI","Umbral anomalías dinámico (µ − 1.5σ)","Exporta CSV + coordenadas GPS anomalías"].map((item,i)=>(
+                  {["Imagen más reciente con < 20% nubosidad","Fallback automático a 45% si no hay imagen","Máscara nubes píxel a píxel (banda SCL)","NDVI + NDWI + EVI + SAVI + NDRE","B5 (RedEdge) resampleado a 10m","Exporta CSV 12 columnas por lote"].map((item,i)=>(
                     <div key={i} style={{display:"flex",gap:6,lineHeight:1.5}}>
                       <span style={{color:"#52b788",flexShrink:0}}>✓</span><span>{item}</span>
                     </div>
